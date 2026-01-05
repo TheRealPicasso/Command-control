@@ -28,6 +28,12 @@ public class CommandControlConfig {
     // Commands that bypass the filter entirely (always shown)
     private static Set<String> bypassCommands = new HashSet<>();
     
+    // Commands that are allowed but hidden from tab-complete (e.g., alias targets)
+    private static Set<String> hiddenCommands = new HashSet<>();
+    
+    // Command aliases (alias -> target command)
+    private static Map<String, String> commandAliases = new HashMap<>();
+    
     // Commands per rank
     private static Map<String, Set<String>> rankCommands = new HashMap<>();
     
@@ -66,6 +72,8 @@ public class CommandControlConfig {
             // Clear existing data
             allRanksCommands.clear();
             bypassCommands.clear();
+            hiddenCommands.clear();
+            commandAliases.clear();
             rankCommands.clear();
             
             // Load rank hierarchy
@@ -81,6 +89,23 @@ public class CommandControlConfig {
                 for (JsonElement element : root.getAsJsonArray("bypass_commands")) {
                     bypassCommands.add(element.getAsString().toLowerCase());
                 }
+            }
+            
+            // Load hidden commands (allowed but not shown in tab-complete)
+            if (root.has("hidden_commands")) {
+                for (JsonElement element : root.getAsJsonArray("hidden_commands")) {
+                    hiddenCommands.add(element.getAsString().toLowerCase());
+                }
+                CommandControl.LOGGER.info("[CommandControls] Loaded {} hidden commands", hiddenCommands.size());
+            }
+            
+            // Load command aliases
+            if (root.has("aliases")) {
+                JsonObject aliases = root.getAsJsonObject("aliases");
+                for (Map.Entry<String, JsonElement> entry : aliases.entrySet()) {
+                    commandAliases.put(entry.getKey().toLowerCase(), entry.getValue().getAsString().toLowerCase());
+                }
+                CommandControl.LOGGER.info("[CommandControls] Loaded {} command aliases", commandAliases.size());
             }
             
             // Load commands section
@@ -128,6 +153,7 @@ public class CommandControlConfig {
         // Add description
         root.addProperty("_comment", "Command Controls Configuration - Define which commands each rank can see and use");
         root.addProperty("_mod_support", "Works with mods using Minecraft's hasPermissionLevel(). Mods with custom permission systems (like Impactor) need LuckPerms permissions set directly.");
+        root.addProperty("_hidden_info", "Hidden commands work but don't show in tab-complete (useful for alias targets)");
         
         // Rank hierarchy
         JsonArray hierarchy = new JsonArray();
@@ -140,6 +166,16 @@ public class CommandControlConfig {
         JsonArray bypass = new JsonArray();
         bypass.add("help");
         root.add("bypass_commands", bypass);
+        
+        // Hidden commands (allowed but not shown in tab-complete)
+        JsonArray hidden = new JsonArray();
+        // Example: hidden.add("sidebar"); - add commands you want to hide from suggestions
+        root.add("hidden_commands", hidden);
+        
+        // Aliases (shorthand commands that point to real commands)
+        JsonObject aliases = new JsonObject();
+        // Example: aliases.addProperty("sb", "sidebar");
+        root.add("aliases", aliases);
         
         // Commands section
         JsonObject commands = new JsonObject();
@@ -237,14 +273,31 @@ public class CommandControlConfig {
         
         command = command.toLowerCase();
         
+        // Debug log
+        CommandControl.LOGGER.debug("[CommandControls] isCommandAllowed check: command='{}', allRanksCommands={}", 
+            command, allRanksCommands);
+        
+        // Resolve alias to target command (if command is an alias)
+        String resolvedCommand = resolveAlias(command);
+        
+        // Also check if any alias points to this command (reverse lookup)
+        // This allows the target command if any of its aliases are in the allowed list
+        Set<String> aliasesForCommand = getAliasesFor(command);
+        
         // Bypass commands are always allowed
-        if (bypassCommands.contains(command)) {
+        if (bypassCommands.contains(command) || bypassCommands.contains(resolvedCommand)) {
             return true;
         }
+        for (String alias : aliasesForCommand) {
+            if (bypassCommands.contains(alias)) return true;
+        }
         
-        // All ranks commands
-        if (allRanksCommands.contains(command)) {
+        // All ranks commands - check original, resolved, and any aliases pointing to this command
+        if (allRanksCommands.contains(command) || allRanksCommands.contains(resolvedCommand)) {
             return true;
+        }
+        for (String alias : aliasesForCommand) {
+            if (allRanksCommands.contains(alias)) return true;
         }
         
         // Get player's rank
@@ -255,8 +308,13 @@ public class CommandControlConfig {
         for (int i = 0; i <= playerRankIndex; i++) {
             String rank = rankHierarchy.get(i);
             Set<String> cmds = rankCommands.get(rank);
-            if (cmds != null && cmds.contains(command)) {
-                return true;
+            if (cmds != null) {
+                if (cmds.contains(command) || cmds.contains(resolvedCommand)) {
+                    return true;
+                }
+                for (String alias : aliasesForCommand) {
+                    if (cmds.contains(alias)) return true;
+                }
             }
         }
         
@@ -264,7 +322,31 @@ public class CommandControlConfig {
     }
     
     /**
+     * Resolve a command alias to its target command
+     * Returns the original command if no alias exists
+     */
+    public static String resolveAlias(String command) {
+        String resolved = commandAliases.get(command.toLowerCase());
+        return resolved != null ? resolved : command;
+    }
+    
+    /**
+     * Get all aliases that map to a target command
+     */
+    public static Set<String> getAliasesFor(String targetCommand) {
+        Set<String> aliases = new HashSet<>();
+        targetCommand = targetCommand.toLowerCase();
+        for (Map.Entry<String, String> entry : commandAliases.entrySet()) {
+            if (entry.getValue().equals(targetCommand)) {
+                aliases.add(entry.getKey());
+            }
+        }
+        return aliases;
+    }
+    
+    /**
      * Get all allowed commands for a player (for syncing to client)
+     * This includes hidden commands so they work, but the client will filter them from suggestions
      */
     public static Set<String> getAllowedCommandsForPlayer(ServerPlayerEntity player) {
         // Auto-reload config periodically
@@ -280,6 +362,9 @@ public class CommandControlConfig {
         // Add all_ranks commands
         allowed.addAll(allRanksCommands);
         
+        // Add hidden commands (they need to be allowed for redirects to work)
+        allowed.addAll(hiddenCommands);
+        
         // Get player's rank
         String playerRank = getPlayerRank(player);
         int playerRankIndex = rankHierarchy.indexOf(playerRank);
@@ -293,7 +378,21 @@ public class CommandControlConfig {
             }
         }
         
+        // Add all aliases that point to allowed commands
+        Set<String> aliasesToAdd = new HashSet<>();
+        for (String cmd : allowed) {
+            aliasesToAdd.addAll(getAliasesFor(cmd));
+        }
+        allowed.addAll(aliasesToAdd);
+        
         return allowed;
+    }
+    
+    /**
+     * Get the set of hidden commands (allowed but not shown in tab-complete)
+     */
+    public static Set<String> getHiddenCommands() {
+        return new HashSet<>(hiddenCommands);
     }
     
     /**

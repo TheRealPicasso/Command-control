@@ -19,16 +19,24 @@ public class CommandSyncHandler {
     private static final int FULL_ACCESS_MARKER = -1;
     
     /**
-     * Create a packet buffer with the allowed commands
+     * Create a packet buffer with the allowed commands and hidden commands
      */
-    public static PacketByteBuf createSyncPacket(Set<String> allowedCommands) {
+    public static PacketByteBuf createSyncPacket(Set<String> allowedCommands, Set<String> hiddenCommands) {
         PacketByteBuf buf = PacketByteBufs.create();
         
-        // Write the number of commands
+        // Write the number of allowed commands
         buf.writeVarInt(allowedCommands.size());
         
-        // Write each command
+        // Write each allowed command
         for (String command : allowedCommands) {
+            buf.writeString(command);
+        }
+        
+        // Write the number of hidden commands
+        buf.writeVarInt(hiddenCommands.size());
+        
+        // Write each hidden command
+        for (String command : hiddenCommands) {
             buf.writeString(command);
         }
         
@@ -45,22 +53,45 @@ public class CommandSyncHandler {
     }
     
     /**
-     * Read allowed commands from a packet buffer
-     * Returns null if this is a full access packet
+     * Result of reading a sync packet
      */
-    public static Set<String> readSyncPacket(PacketByteBuf buf) {
+    public static class SyncData {
+        public final Set<String> allowedCommands;
+        public final Set<String> hiddenCommands;
+        public final boolean fullAccess;
+        
+        public SyncData(Set<String> allowedCommands, Set<String> hiddenCommands, boolean fullAccess) {
+            this.allowedCommands = allowedCommands;
+            this.hiddenCommands = hiddenCommands;
+            this.fullAccess = fullAccess;
+        }
+    }
+    
+    /**
+     * Read allowed and hidden commands from a packet buffer
+     * Returns SyncData with fullAccess=true if this is a full access packet
+     */
+    public static SyncData readSyncPacketV2(PacketByteBuf buf) {
         int count = buf.readVarInt();
         
         // Check for full access marker
         if (count == FULL_ACCESS_MARKER) {
-            return null; // null = full access
+            return new SyncData(null, null, true);
         }
         
-        Set<String> commands = new HashSet<>();
+        // Read allowed commands
+        Set<String> allowedCommands = new HashSet<>();
         for (int i = 0; i < count; i++) {
-            commands.add(buf.readString());
+            allowedCommands.add(buf.readString());
         }
         
-        return commands;
+        // Read hidden commands
+        Set<String> hiddenCommands = new HashSet<>();
+        int hiddenCount = buf.readVarInt();
+        for (int i = 0; i < hiddenCount; i++) {
+            hiddenCommands.add(buf.readString());
+        }
+        
+        return new SyncData(allowedCommands, hiddenCommands, false);
     }
 }

@@ -63,7 +63,7 @@ public abstract class CommandManagerMixin {
                 // Check if command is allowed for this player via our config
                 if (CommandControlConfig.isCommandAllowed(player, commandName)) {
                     // Use elevated source for building tree so all arguments are included
-                    buildFilteredTree(child, resultRoot, elevatedSource, visitedNodes);
+                    buildFilteredTree(child, resultRoot, elevatedSource, visitedNodes, resultRoot);
                 }
             }
             
@@ -111,14 +111,18 @@ public abstract class CommandManagerMixin {
     
     /**
      * Recursively build filtered command tree
-     * Uses elevated source so all children pass canUse() checks
+     * We skip canUse() checks entirely because:
+     * 1. We already filter at the top level via our config's isCommandAllowed()
+     * 2. Some mods (like CommandAliases) use custom predicates that fail even with elevated permissions
+     * 3. The server still validates execution permissions - this only affects what's shown in tab-complete
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void buildFilteredTree(
             CommandNode<ServerCommandSource> node,
             CommandNode<CommandSource> parent,
             ServerCommandSource elevatedSource,
-            Map<CommandNode<ServerCommandSource>, CommandNode<CommandSource>> visitedNodes
+            Map<CommandNode<ServerCommandSource>, CommandNode<CommandSource>> visitedNodes,
+            RootCommandNode<CommandSource> root
     ) {
         CommandNode<CommandSource> existingNode = visitedNodes.get(node);
         if (existingNode != null) {
@@ -126,53 +130,61 @@ public abstract class CommandManagerMixin {
             return;
         }
         
-        // Check if node can be used with elevated permissions
-        // This ensures complex permission structures are respected
-        if (!node.canUse(elevatedSource)) {
-            return;
-        }
+        // Skip canUse() entirely - we filter via our config and server validates execution anyway
+        // This fixes compatibility with mods that use custom requirement predicates (like CommandAliases)
         
-        CommandNode<CommandSource> newNode = createNodeCopy(node, visitedNodes);
+        CommandNode<CommandSource> newNode = createNodeCopy(node, visitedNodes, elevatedSource, root);
         if (newNode == null) {
             return;
         }
         
-        visitedNodes.put(node, newNode);
+        visitedNodes.put(node, newNode);;
         parent.addChild(newNode);
         
         // Process ALL children with elevated permissions
         for (CommandNode<ServerCommandSource> child : node.getChildren()) {
-            buildFilteredTree(child, newNode, elevatedSource, visitedNodes);
-        }
-        
-        // Handle redirect (important for commands like /tp which use redirects)
-        if (node.getRedirect() != null) {
-            CommandNode<ServerCommandSource> redirect = node.getRedirect();
-            CommandNode<CommandSource> redirectCopy = visitedNodes.get(redirect);
-            
-            if (redirectCopy == null) {
-                // Redirect target not yet processed, process it now
-                buildFilteredTree(redirect, parent, elevatedSource, visitedNodes);
-                redirectCopy = visitedNodes.get(redirect);
-            }
-            
-            // Note: We can't easily set redirect on the copy since Brigadier nodes are immutable
-            // The redirect will be handled through the children we've already copied
+            buildFilteredTree(child, newNode, elevatedSource, visitedNodes, root);
         }
     }
     
     /**
      * Create a CommandSource copy of a ServerCommandSource node
+     * Now properly handles redirects by ensuring redirect target is processed first
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private CommandNode<CommandSource> createNodeCopy(
             CommandNode<ServerCommandSource> node,
-            Map<CommandNode<ServerCommandSource>, CommandNode<CommandSource>> visitedNodes
+            Map<CommandNode<ServerCommandSource>, CommandNode<CommandSource>> visitedNodes,
+            ServerCommandSource elevatedSource,
+            RootCommandNode<CommandSource> root
     ) {
-        // Handle redirect - find or create the redirect target
+        // Handle redirect - ensure redirect target exists FIRST
         CommandNode<CommandSource> redirectTarget = null;
         if (node.getRedirect() != null) {
             redirectTarget = visitedNodes.get(node.getRedirect());
+            
+            // If redirect target doesn't exist yet, we need to process it first
+            if (redirectTarget == null) {
+                CommandNode<ServerCommandSource> redirectNode = node.getRedirect();
+                
+                // Process the redirect target
+                if (redirectNode.canUse(elevatedSource)) {
+                    CommandNode<CommandSource> newRedirectTarget = createNodeCopy(redirectNode, visitedNodes, elevatedSource, root);
+                    if (newRedirectTarget != null) {
+                        visitedNodes.put(redirectNode, newRedirectTarget);
+                        // Add redirect target to root if it's a top-level command
+                        if (redirectNode.getClass().equals(LiteralCommandNode.class)) {
+                            root.addChild(newRedirectTarget);
+                        }
+                        redirectTarget = newRedirectTarget;
+                        
+                        // Also process children of the redirect target
+                        for (CommandNode<ServerCommandSource> child : redirectNode.getChildren()) {
+                            buildFilteredTree(child, newRedirectTarget, elevatedSource, visitedNodes, root);
+                        }
+                    }
+                }
+            }
         }
         
         if (node instanceof LiteralCommandNode literal) {

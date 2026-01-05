@@ -24,6 +24,9 @@ public class CommandControlClient implements ClientModInitializer {
     // Set of commands the player is allowed to use (synced from server)
     private static Set<String> allowedCommands = new HashSet<>();
     
+    // Set of commands that are hidden from tab-complete but still work
+    private static Set<String> hiddenCommands = new HashSet<>();
+    
     // Whether we've received sync from a CommandControl-enabled server
     private static boolean syncReceived = false;
     
@@ -36,23 +39,26 @@ public class CommandControlClient implements ClientModInitializer {
         
         // Register to receive command sync from server
         ClientPlayNetworking.registerGlobalReceiver(CommandSyncHandler.SYNC_CHANNEL, (client, handler, buf, responseSender) -> {
-            // Read the sync data on network thread
-            Set<String> commands = CommandSyncHandler.readSyncPacket(buf);
+            // Read the sync data on network thread using new V2 format
+            CommandSyncHandler.SyncData syncData = CommandSyncHandler.readSyncPacketV2(buf);
             
             // Update state on client thread
             client.execute(() -> {
-                if (commands == null) {
+                if (syncData.fullAccess) {
                     // Full access packet (OP player)
                     fullAccess = true;
                     allowedCommands = new HashSet<>();
+                    hiddenCommands = new HashSet<>();
                     syncReceived = true;
                     LOGGER.info("[CommandControls] Received FULL ACCESS from server (OP mode)");
                 } else {
                     // Normal allowed commands list
                     fullAccess = false;
-                    allowedCommands = commands;
+                    allowedCommands = syncData.allowedCommands;
+                    hiddenCommands = syncData.hiddenCommands != null ? syncData.hiddenCommands : new HashSet<>();
                     syncReceived = true;
-                    LOGGER.info("[CommandControls] Received {} allowed commands from server", allowedCommands.size());
+                    LOGGER.info("[CommandControls] Received {} allowed commands, {} hidden from server", 
+                            allowedCommands.size(), hiddenCommands.size());
                 }
             });
         });
@@ -60,6 +66,7 @@ public class CommandControlClient implements ClientModInitializer {
         // Clear state when disconnecting
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             allowedCommands.clear();
+            hiddenCommands.clear();
             syncReceived = false;
             fullAccess = false;
             LOGGER.debug("[CommandControls] Cleared command sync state");
@@ -71,7 +78,7 @@ public class CommandControlClient implements ClientModInitializer {
     /**
      * Check if a command should be shown in suggestions
      * @param commandName The base command name (without /)
-     * @return true if the command should be shown
+     * @return true if the command should be shown in tab-complete
      */
     public static boolean shouldShowCommand(String commandName) {
         // If we haven't received sync from server, show all commands (vanilla behavior)
@@ -85,6 +92,13 @@ public class CommandControlClient implements ClientModInitializer {
         }
         
         String lowerCommand = commandName.toLowerCase();
+        
+        // Hidden commands are allowed but not shown in suggestions
+        if (hiddenCommands.contains(lowerCommand)) {
+            LOGGER.debug("[CommandControls] Hiding command from suggestions: {}", lowerCommand);
+            return false;
+        }
+        
         boolean allowed = allowedCommands.contains(lowerCommand);
         if (!allowed) {
             LOGGER.debug("[CommandControls] Blocking command: {} (not in {} allowed commands)", lowerCommand, allowedCommands.size());

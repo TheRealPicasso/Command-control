@@ -81,17 +81,24 @@ public class CommandControl implements ModInitializer {
                 if (ServerPlayNetworking.canSend(player, CommandSyncHandler.SYNC_CHANNEL)) {
                     ServerPlayNetworking.send(player, CommandSyncHandler.SYNC_CHANNEL, 
                             CommandSyncHandler.createFullAccessPacket());
+                    LOGGER.info("[CommandControls] Sent FULL ACCESS sync to {}", player.getName().getString());
                 }
                 return;
             }
             
             var allowedCommands = CommandControlConfig.getAllowedCommandsForPlayer(player);
+            var hiddenCommands = CommandControlConfig.getHiddenCommands();
+            
+            LOGGER.info("[CommandControls] Sending sync packet to {} with {} commands (hidden: {}): {}", 
+                    player.getName().getString(), allowedCommands.size(), hiddenCommands.size(), allowedCommands);
             
             // Check if client can receive our packets
             if (ServerPlayNetworking.canSend(player, CommandSyncHandler.SYNC_CHANNEL)) {
-                // Send the allowed commands to the client
+                // Send the allowed commands and hidden commands to the client
                 ServerPlayNetworking.send(player, CommandSyncHandler.SYNC_CHANNEL, 
-                        CommandSyncHandler.createSyncPacket(allowedCommands));
+                        CommandSyncHandler.createSyncPacket(allowedCommands, hiddenCommands));
+            } else {
+                LOGGER.warn("[CommandControls] Client cannot receive sync packets for {}", player.getName().getString());
             }
         } catch (Exception e) {
             LOGGER.warn("[CommandControls] Failed to send command sync to player", e);
