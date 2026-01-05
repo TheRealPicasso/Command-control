@@ -1,19 +1,19 @@
 {
 	"schemaVersion": 1,
-	"id": "commandcontrol",
+	"id": "commandcontrols",
 	"version": "${version}",
-	"name": "Command Control",
+	"name": "Command Controls",
 	"description": "Control which commands players can see and use. Filter command suggestions on both server and client side. Perfect for servers that want to hide admin commands or restrict access to specific commands per rank.",
 	"authors": [
 		"Vincent Porath"
 	],
 	"contact": {
-		"homepage": "https://modrinth.com/mod/commandcontrol",
-		"sources": "https://github.com/VincentPorath/CommandControl",
-		"issues": "https://github.com/VincentPorath/CommandControl/issues"
+		"homepage": "https://modrinth.com/mod/command-controls",
+		"sources": "https://github.com/TheRealPicasso/Command-controls",
+		"issues": "https://github.com/TheRealPicasso/Command-controls/issues"
 	},
 	"license": "MIT",
-	"icon": "assets/commandcontrol/icon.png",
+	"icon": "assets/commandcontrols/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
@@ -24,9 +24,9 @@
 		]
 	},
 	"mixins": [
-		"commandcontrol.mixins.json",
+		"commandcontrols.mixins.json",
 		{
-			"config": "commandcontrol.client.mixins.json",
+			"config": "commandcontrols.client.mixins.json",
 			"environment": "client"
 		}
 	],

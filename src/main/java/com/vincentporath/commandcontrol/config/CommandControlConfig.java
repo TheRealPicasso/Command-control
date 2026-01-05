@@ -20,7 +20,7 @@ import java.util.*;
 public class CommandControlConfig {
     
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final Path CONFIG_PATH = Paths.get("config", "commandcontrol", "commands.json");
+    private static final Path CONFIG_PATH = Paths.get("config", "commandcontrols", "commands.json");
     
     // Commands allowed for all ranks
     private static Set<String> allRanksCommands = new HashSet<>();
@@ -47,7 +47,7 @@ public class CommandControlConfig {
         if (!initialized) {
             loadConfig();
             initialized = true;
-            CommandControl.LOGGER.info("[CommandControl] Configuration initialized");
+            CommandControl.LOGGER.info("[CommandControls] Configuration initialized");
         }
     }
     
@@ -110,11 +110,11 @@ public class CommandControlConfig {
             
             int totalCommands = allRanksCommands.size() + 
                     rankCommands.values().stream().mapToInt(Set::size).sum();
-            CommandControl.LOGGER.info("[CommandControl] Loaded config: {} base commands, {} ranks", 
+            CommandControl.LOGGER.info("[CommandControls] Loaded config: {} base commands, {} ranks", 
                     totalCommands, rankHierarchy.size());
             
         } catch (Exception e) {
-            CommandControl.LOGGER.error("[CommandControl] Failed to load config", e);
+            CommandControl.LOGGER.error("[CommandControls] Failed to load config", e);
             createDefaultConfig();
         }
     }
@@ -126,7 +126,8 @@ public class CommandControlConfig {
         JsonObject root = new JsonObject();
         
         // Add description
-        root.addProperty("_comment", "Command Control Configuration - Define which commands each rank can see and use");
+        root.addProperty("_comment", "Command Controls Configuration - Define which commands each rank can see and use");
+        root.addProperty("_mod_support", "Works with mods using Minecraft's hasPermissionLevel(). Mods with custom permission systems (like Impactor) need LuckPerms permissions set directly.");
         
         // Rank hierarchy
         JsonArray hierarchy = new JsonArray();
@@ -138,68 +139,74 @@ public class CommandControlConfig {
         // Bypass commands (always visible to everyone)
         JsonArray bypass = new JsonArray();
         bypass.add("help");
-        bypass.add("list");
         root.add("bypass_commands", bypass);
         
         // Commands section
         JsonObject commands = new JsonObject();
         
-        // All ranks
+        // All ranks - basic vanilla commands everyone should have
         JsonArray allRanks = new JsonArray();
         allRanks.add("help");
-        allRanks.add("list");
-        allRanks.add("spawn");
-        allRanks.add("home");
-        allRanks.add("sethome");
-        allRanks.add("tpa");
-        allRanks.add("balance");
-        allRanks.add("b");
-        allRanks.add("pay");
+        allRanks.add("me");
         allRanks.add("msg");
-        allRanks.add("r");
-        allRanks.add("tell");
-        allRanks.add("w");
+        allRanks.add("list");
+        allRanks.add("seed");
         commands.add("all_ranks", allRanks);
         
-        // VIP commands
+        // VIP commands (empty by default - add your own)
         JsonArray vip = new JsonArray();
-        vip.add("hat");
-        vip.add("nick");
-        vip.add("craft");
-        vip.add("enderchest");
         commands.add("vip", vip);
         
         // Moderator commands
         JsonArray moderator = new JsonArray();
         moderator.add("kick");
-        moderator.add("mute");
-        moderator.add("tempban");
-        moderator.add("vanish");
-        moderator.add("invsee");
         moderator.add("tp");
-        moderator.add("tphere");
+        moderator.add("teleport");
+        moderator.add("spectate");
+        moderator.add("clear");
         commands.add("moderator", moderator);
         
         // Admin commands
         JsonArray admin = new JsonArray();
         admin.add("ban");
-        admin.add("unban");
+        admin.add("ban-ip");
+        admin.add("pardon");
+        admin.add("pardon-ip");
+        admin.add("banlist");
         admin.add("give");
         admin.add("gamemode");
-        admin.add("gm");
-        admin.add("fly");
-        admin.add("god");
         admin.add("time");
         admin.add("weather");
+        admin.add("difficulty");
+        admin.add("effect");
+        admin.add("enchant");
+        admin.add("experience");
+        admin.add("xp");
+        admin.add("fill");
+        admin.add("setblock");
+        admin.add("summon");
+        admin.add("kill");
         commands.add("admin", admin);
         
-        // Owner commands (all remaining)
+        // Owner commands (server management)
         JsonArray owner = new JsonArray();
         owner.add("stop");
-        owner.add("reload");
         owner.add("op");
         owner.add("deop");
         owner.add("whitelist");
+        owner.add("save-all");
+        owner.add("save-off");
+        owner.add("save-on");
+        owner.add("reload");
+        owner.add("function");
+        owner.add("data");
+        owner.add("datapack");
+        owner.add("debug");
+        owner.add("gamerule");
+        owner.add("worldborder");
+        owner.add("forceload");
+        owner.add("setworldspawn");
+        // LuckPerms commands (if installed)
         owner.add("lp");
         owner.add("luckperms");
         commands.add("owner", owner);
@@ -209,15 +216,14 @@ public class CommandControlConfig {
         try {
             Files.createDirectories(CONFIG_PATH.getParent());
             Files.writeString(CONFIG_PATH, GSON.toJson(root));
-            CommandControl.LOGGER.info("[CommandControl] Created default config at {}", CONFIG_PATH);
+            CommandControl.LOGGER.info("[CommandControls] Created default config at {}", CONFIG_PATH);
         } catch (IOException e) {
-            CommandControl.LOGGER.error("[CommandControl] Failed to create default config", e);
+            CommandControl.LOGGER.error("[CommandControls] Failed to create default config", e);
         }
         
         // Load the defaults into memory
-        allRanksCommands.addAll(Arrays.asList("help", "list", "spawn", "home", "sethome", "tpa", 
-                "balance", "b", "pay", "msg", "r", "tell", "w"));
-        bypassCommands.addAll(Arrays.asList("help", "list"));
+        allRanksCommands.addAll(Arrays.asList("help", "me", "msg", "list", "seed"));
+        bypassCommands.add("help");
     }
     
     /**
@@ -291,10 +297,13 @@ public class CommandControlConfig {
     }
     
     /**
-     * Get player's rank from LuckPerms via fabric-permissions-api
+     * Get player's rank from LuckPerms using the simple permission check method
+     * As recommended by LuckPerms documentation: https://luckperms.net/wiki/Developer-API-Usage
      */
     private static String getPlayerRank(ServerPlayerEntity player) {
-        // Check from highest to lowest rank
+        // LuckPerms recommended method: check group.X permissions
+        // This works because LuckPerms automatically grants "group.<groupname>" to players
+        // Check from highest to lowest rank to get the highest rank the player has
         for (int i = rankHierarchy.size() - 1; i >= 0; i--) {
             String rank = rankHierarchy.get(i);
             try {
@@ -302,7 +311,7 @@ public class CommandControlConfig {
                     return rank;
                 }
             } catch (Exception e) {
-                // Permission check failed
+                // Permission check failed, try next
             }
         }
         
@@ -319,5 +328,12 @@ public class CommandControlConfig {
      */
     public static void reload() {
         loadConfig();
+    }
+    
+    /**
+     * Get the rank hierarchy list
+     */
+    public static List<String> getRankHierarchy() {
+        return new ArrayList<>(rankHierarchy);
     }
 }

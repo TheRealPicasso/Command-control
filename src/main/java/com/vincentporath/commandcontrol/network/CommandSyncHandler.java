@@ -15,6 +15,9 @@ public class CommandSyncHandler {
     
     public static final Identifier SYNC_CHANNEL = new Identifier(CommandControl.MOD_ID, "command_sync");
     
+    // Special marker for full access (OP players)
+    private static final int FULL_ACCESS_MARKER = -1;
+    
     /**
      * Create a packet buffer with the allowed commands
      */
@@ -33,12 +36,27 @@ public class CommandSyncHandler {
     }
     
     /**
+     * Create a packet indicating full access (OP player)
+     */
+    public static PacketByteBuf createFullAccessPacket() {
+        PacketByteBuf buf = PacketByteBufs.create();
+        buf.writeVarInt(FULL_ACCESS_MARKER); // -1 means full access
+        return buf;
+    }
+    
+    /**
      * Read allowed commands from a packet buffer
+     * Returns null if this is a full access packet
      */
     public static Set<String> readSyncPacket(PacketByteBuf buf) {
-        Set<String> commands = new HashSet<>();
-        
         int count = buf.readVarInt();
+        
+        // Check for full access marker
+        if (count == FULL_ACCESS_MARKER) {
+            return null; // null = full access
+        }
+        
+        Set<String> commands = new HashSet<>();
         for (int i = 0; i < count; i++) {
             commands.add(buf.readString());
         }

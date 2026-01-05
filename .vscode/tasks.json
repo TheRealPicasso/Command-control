@@ -1,0 +1,77 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "🔨 Build (no version change)",
+            "type": "shell",
+            "command": ".\\build.ps1",
+            "args": ["build"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📦 Build + Patch (x.x.0 → x.x.1)",
+            "type": "shell",
+            "command": ".\\build.ps1",
+            "args": ["patch"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📦 Build + Minor (x.0.x → x.1.0)",
+            "type": "shell",
+            "command": ".\\build.ps1",
+            "args": ["minor"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "📦 Build + Major (0.x.x → 1.0.0)",
+            "type": "shell",
+            "command": ".\\build.ps1",
+            "args": ["major"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "🧹 Clean Build",
+            "type": "shell",
+            "command": ".\\gradlew",
+            "args": ["clean", "build"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "⏪ Rollback Version",
+            "type": "shell",
+            "command": ".\\build.ps1",
+            "args": ["rollback", "-Force"],
+            "group": "build",
+            "presentation": {
+                "reveal": "always",
+                "panel": "shared"
+            },
+            "problemMatcher": []
+        }
+    ]
+}

@@ -12,6 +12,10 @@ base {
 
 repositories {
 	mavenCentral()
+	// LuckPerms API repository
+	maven {
+		url = "https://repo.luckperms.net/releases/"
+	}
 }
 
 loom {
@@ -31,8 +35,11 @@ dependencies {
 	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 	
-	// Fabric Permissions API (for LuckPerms integration)
+	// Fabric Permissions API (for LuckPerms integration via group.X permissions)
 	include(modImplementation("me.lucko:fabric-permissions-api:0.3.3"))
+	
+	// LuckPerms API (for event listening)
+	compileOnly("net.luckperms:api:5.4")
 }
 
 processResources {

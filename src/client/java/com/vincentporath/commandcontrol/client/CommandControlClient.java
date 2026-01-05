@@ -27,9 +27,12 @@ public class CommandControlClient implements ClientModInitializer {
     // Whether we've received sync from a CommandControl-enabled server
     private static boolean syncReceived = false;
     
+    // Whether the player has full access (OP)
+    private static boolean fullAccess = false;
+    
     @Override
     public void onInitializeClient() {
-        LOGGER.info("[CommandControl] Client initializing...");
+        LOGGER.info("[CommandControls] Client initializing...");
         
         // Register to receive command sync from server
         ClientPlayNetworking.registerGlobalReceiver(CommandSyncHandler.SYNC_CHANNEL, (client, handler, buf, responseSender) -> {
@@ -38,9 +41,19 @@ public class CommandControlClient implements ClientModInitializer {
             
             // Update state on client thread
             client.execute(() -> {
-                allowedCommands = commands;
-                syncReceived = true;
-                LOGGER.info("[CommandControl] Received {} allowed commands from server", allowedCommands.size());
+                if (commands == null) {
+                    // Full access packet (OP player)
+                    fullAccess = true;
+                    allowedCommands = new HashSet<>();
+                    syncReceived = true;
+                    LOGGER.info("[CommandControls] Received FULL ACCESS from server (OP mode)");
+                } else {
+                    // Normal allowed commands list
+                    fullAccess = false;
+                    allowedCommands = commands;
+                    syncReceived = true;
+                    LOGGER.info("[CommandControls] Received {} allowed commands from server", allowedCommands.size());
+                }
             });
         });
         
@@ -48,10 +61,11 @@ public class CommandControlClient implements ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
             allowedCommands.clear();
             syncReceived = false;
-            LOGGER.debug("[CommandControl] Cleared command sync state");
+            fullAccess = false;
+            LOGGER.debug("[CommandControls] Cleared command sync state");
         });
         
-        LOGGER.info("[CommandControl] Client initialized!");
+        LOGGER.info("[CommandControls] Client initialized!");
     }
     
     /**
@@ -65,7 +79,17 @@ public class CommandControlClient implements ClientModInitializer {
             return true;
         }
         
-        return allowedCommands.contains(commandName.toLowerCase());
+        // Full access means show everything
+        if (fullAccess) {
+            return true;
+        }
+        
+        String lowerCommand = commandName.toLowerCase();
+        boolean allowed = allowedCommands.contains(lowerCommand);
+        if (!allowed) {
+            LOGGER.debug("[CommandControls] Blocking command: {} (not in {} allowed commands)", lowerCommand, allowedCommands.size());
+        }
+        return allowed;
     }
     
     /**
@@ -73,6 +97,13 @@ public class CommandControlClient implements ClientModInitializer {
      */
     public static boolean isSyncReceived() {
         return syncReceived;
+    }
+    
+    /**
+     * Check if player has full access (OP)
+     */
+    public static boolean hasFullAccess() {
+        return fullAccess;
     }
     
     /**

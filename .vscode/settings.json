@@ -1,0 +1,37 @@
+{
+    "VsCodeTaskButtons.showCounter": true,
+    "VsCodeTaskButtons.tasks": [
+        {
+            "label": "$(tools) Build",
+            "alignment": "left",
+            "task": "🔨 Build (no version change)",
+            "tooltip": "Build without version change",
+            "description": "Build the mod without changing the version",
+            "color": "default"
+        },
+        {
+            "label": "$(package) Patch",
+            "alignment": "left",
+            "task": "📦 Build + Patch (x.x.0 → x.x.1)",
+            "tooltip": "Increment patch version",
+            "description": "Build and increment patch version (x.x.0 → x.x.1)",
+            "color": "default"
+        },
+        {
+            "label": "$(package) Minor",
+            "alignment": "left",
+            "task": "📦 Build + Minor (x.0.x → x.1.0)",
+            "tooltip": "Increment minor version",
+            "description": "Build and increment minor version (x.0.x → x.1.0)",
+            "color": "warning"
+        },
+        {
+            "label": "$(package) Major",
+            "alignment": "left",
+            "task": "📦 Build + Major (0.x.x → 1.0.0)",
+            "tooltip": "Increment major version",
+            "description": "Build and increment major version (0.x.x → 1.0.0)",
+            "color": "error"
+        }
+    ]
+}

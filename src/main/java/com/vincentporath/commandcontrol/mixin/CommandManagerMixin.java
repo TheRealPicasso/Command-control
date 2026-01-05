@@ -36,7 +36,9 @@ public abstract class CommandManagerMixin {
     @Shadow @Final private CommandDispatcher<ServerCommandSource> dispatcher;
 
     /**
-     * Filter command suggestions sent to players
+     * Filter command suggestions sent to players.
+     * We use an elevated source so that vanilla's makeCommandTree includes full argument structure,
+     * but filter based on our config.
      */
     @Inject(method = "sendCommandTree", at = @At("HEAD"), cancellable = true)
     private void commandcontrol$filterCommandTree(ServerPlayerEntity player, CallbackInfo ci) {
@@ -46,9 +48,10 @@ public abstract class CommandManagerMixin {
         }
         
         try {
-            ServerCommandSource source = player.getCommandSource();
+            // Use elevated source so vanilla includes full argument structure
+            ServerCommandSource elevatedSource = player.getCommandSource().withLevel(4);
             
-            // Build filtered command tree
+            // Build command tree using vanilla method with elevated permissions
             Map<CommandNode<ServerCommandSource>, CommandNode<CommandSource>> visitedNodes = new IdentityHashMap<>();
             RootCommandNode<CommandSource> resultRoot = new RootCommandNode<>();
             visitedNodes.put(this.dispatcher.getRoot(), resultRoot);
@@ -57,9 +60,10 @@ public abstract class CommandManagerMixin {
             for (CommandNode<ServerCommandSource> child : this.dispatcher.getRoot().getChildren()) {
                 String commandName = child.getName().toLowerCase();
                 
-                // Check if command is allowed for this player
-                if (CommandControlConfig.isCommandAllowed(player, commandName) && child.canUse(source)) {
-                    buildFilteredTree(child, resultRoot, source, visitedNodes);
+                // Check if command is allowed for this player via our config
+                if (CommandControlConfig.isCommandAllowed(player, commandName)) {
+                    // Use elevated source for building tree so all arguments are included
+                    buildFilteredTree(child, resultRoot, elevatedSource, visitedNodes);
                 }
             }
             
@@ -68,21 +72,23 @@ public abstract class CommandManagerMixin {
             ci.cancel();
             
         } catch (Exception e) {
-            CommandControl.LOGGER.error("[CommandControl] Error filtering command tree", e);
+            CommandControl.LOGGER.error("[CommandControls] Error filtering command tree", e);
             // Fall back to vanilla behavior on error
         }
     }
     
     /**
      * Block execution of unauthorized commands
+     * Note: This is a safety check - the command tree filtering should already hide unauthorized commands
      */
     @Inject(method = "execute", at = @At("HEAD"), cancellable = true)
     private void commandcontrol$blockUnauthorizedCommand(ParseResults<ServerCommandSource> parseResults, String command, CallbackInfoReturnable<Integer> cir) {
         ServerCommandSource source = parseResults.getContext().getSource();
         
         if (source.getEntity() instanceof ServerPlayerEntity player) {
-            // OP level 4 bypasses restrictions
-            if (player.hasPermissionLevel(4)) {
+            // Check the SOURCE's permission level (which may have been elevated by our mod)
+            // If source has level 4, it means either they're OP or we granted permission
+            if (source.hasPermissionLevel(4)) {
                 return;
             }
             
@@ -92,22 +98,26 @@ public abstract class CommandManagerMixin {
                 baseCommand = baseCommand.substring(1);
             }
             
-            // Check if command is allowed
-            if (!CommandControlConfig.isCommandAllowed(player, baseCommand)) {
-                player.sendMessage(Text.literal("§c[CommandControl] You do not have permission for this command."), false);
-                cir.setReturnValue(0);
+            // Check if command is allowed - if so, don't block
+            // (This handles cases where the source level wasn't elevated for some reason)
+            if (CommandControlConfig.isCommandAllowed(player, baseCommand)) {
+                return;
             }
+            
+            player.sendMessage(Text.literal("§c[CommandControls] You do not have permission for this command."), false);
+            cir.setReturnValue(0);
         }
     }
     
     /**
      * Recursively build filtered command tree
+     * Uses elevated source so all children pass canUse() checks
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
     private void buildFilteredTree(
             CommandNode<ServerCommandSource> node,
             CommandNode<CommandSource> parent,
-            ServerCommandSource source,
+            ServerCommandSource elevatedSource,
             Map<CommandNode<ServerCommandSource>, CommandNode<CommandSource>> visitedNodes
     ) {
         CommandNode<CommandSource> existingNode = visitedNodes.get(node);
@@ -116,7 +126,13 @@ public abstract class CommandManagerMixin {
             return;
         }
         
-        CommandNode<CommandSource> newNode = createNodeCopy(node);
+        // Check if node can be used with elevated permissions
+        // This ensures complex permission structures are respected
+        if (!node.canUse(elevatedSource)) {
+            return;
+        }
+        
+        CommandNode<CommandSource> newNode = createNodeCopy(node, visitedNodes);
         if (newNode == null) {
             return;
         }
@@ -124,11 +140,24 @@ public abstract class CommandManagerMixin {
         visitedNodes.put(node, newNode);
         parent.addChild(newNode);
         
-        // Process children
+        // Process ALL children with elevated permissions
         for (CommandNode<ServerCommandSource> child : node.getChildren()) {
-            if (child.canUse(source)) {
-                buildFilteredTree(child, newNode, source, visitedNodes);
+            buildFilteredTree(child, newNode, elevatedSource, visitedNodes);
+        }
+        
+        // Handle redirect (important for commands like /tp which use redirects)
+        if (node.getRedirect() != null) {
+            CommandNode<ServerCommandSource> redirect = node.getRedirect();
+            CommandNode<CommandSource> redirectCopy = visitedNodes.get(redirect);
+            
+            if (redirectCopy == null) {
+                // Redirect target not yet processed, process it now
+                buildFilteredTree(redirect, parent, elevatedSource, visitedNodes);
+                redirectCopy = visitedNodes.get(redirect);
             }
+            
+            // Note: We can't easily set redirect on the copy since Brigadier nodes are immutable
+            // The redirect will be handled through the children we've already copied
         }
     }
     
@@ -136,16 +165,26 @@ public abstract class CommandManagerMixin {
      * Create a CommandSource copy of a ServerCommandSource node
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private CommandNode<CommandSource> createNodeCopy(CommandNode<ServerCommandSource> node) {
+    private CommandNode<CommandSource> createNodeCopy(
+            CommandNode<ServerCommandSource> node,
+            Map<CommandNode<ServerCommandSource>, CommandNode<CommandSource>> visitedNodes
+    ) {
+        // Handle redirect - find or create the redirect target
+        CommandNode<CommandSource> redirectTarget = null;
+        if (node.getRedirect() != null) {
+            redirectTarget = visitedNodes.get(node.getRedirect());
+        }
+        
         if (node instanceof LiteralCommandNode literal) {
-            return new LiteralCommandNode<>(
+            LiteralCommandNode<CommandSource> newNode = new LiteralCommandNode<>(
                     literal.getLiteral(),
-                    null,
-                    s -> true,
-                    null,
-                    null,
+                    null,  // command
+                    s -> true,  // always allow
+                    redirectTarget,
+                    null,  // redirect modifier - not needed for client tree
                     literal.isFork()
             );
+            return newNode;
         } else if (node instanceof ArgumentCommandNode argument) {
             ArgumentType<?> type = argument.getType();
             
@@ -157,10 +196,10 @@ public abstract class CommandManagerMixin {
             return new ArgumentCommandNode<>(
                     argument.getName(),
                     type,
-                    null,
-                    s -> true,
-                    null,
-                    null,
+                    null,  // command
+                    s -> true,  // always allow
+                    redirectTarget,
+                    null,  // redirect modifier - not needed for client tree
                     argument.isFork(),
                     argument.getCustomSuggestions()
             );

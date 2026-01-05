@@ -3,7 +3,12 @@
 	"package": "com.vincentporath.commandcontrol.mixin",
 	"compatibilityLevel": "JAVA_17",
 	"mixins": [
-		"CommandManagerMixin"
+		"CommandManagerMixin",
+		"OpCommandMixin",
+		"DeOpCommandMixin",
+		"ServerCommandSourceMixin",
+		"CommandExecutionMixin",
+		"CommandSuggestionsMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
