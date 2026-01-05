@@ -87,6 +87,7 @@ Without LuckPerms, the mod uses vanilla OP levels:
 
 | Command | Description |
 |---------|-------------|
+| `/commandcontrols` | OP Level 4 | Show help |
 | `/commandcontrols reload` | Reload configuration |
 | `/commandcontrols luckperms-setup` | Auto-setup LuckPerms |
 | `/commandcontrols status` | Show your current rank and allowed commands |

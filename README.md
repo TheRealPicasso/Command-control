@@ -102,6 +102,7 @@ If LuckPerms is not installed, the mod falls back to Minecraft's OP levels:
 | `/commandcontrols reload` | OP Level 4 | Reload configuration |
 | `/commandcontrols luckperms-setup` | OP Level 4 | Auto-setup LuckPerms permissions |
 | `/commandcontrols status` | OP Level 4 | Show current status and your allowed commands |
+| `/commandcontrols resync` | Synchronizes your rank permissions |
 
 ## Compatibility
 
