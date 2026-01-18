@@ -16,7 +16,8 @@ param(
 )
 
 $PropertiesFile = "gradle.properties"
-$BuildDir = "build\libs"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$BuildDir = Join-Path $ScriptDir "build\libs"
 
 # Colors for output
 function Write-ColorText {

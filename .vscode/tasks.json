@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "🔨 Build (no version change)",
+            "label": "Build (no version change)",
             "type": "shell",
             "command": ".\\build.ps1",
             "args": ["build"],
@@ -14,7 +14,7 @@
             "problemMatcher": []
         },
         {
-            "label": "📦 Build + Patch (x.x.0 → x.x.1)",
+            "label": "Build + Patch",
             "type": "shell",
             "command": ".\\build.ps1",
             "args": ["patch"],
@@ -26,7 +26,7 @@
             "problemMatcher": []
         },
         {
-            "label": "📦 Build + Minor (x.0.x → x.1.0)",
+            "label": "Build + Minor",
             "type": "shell",
             "command": ".\\build.ps1",
             "args": ["minor"],
@@ -38,7 +38,7 @@
             "problemMatcher": []
         },
         {
-            "label": "📦 Build + Major (0.x.x → 1.0.0)",
+            "label": "Build + Major",
             "type": "shell",
             "command": ".\\build.ps1",
             "args": ["major"],
@@ -50,7 +50,7 @@
             "problemMatcher": []
         },
         {
-            "label": "🧹 Clean Build",
+            "label": "Clean Build",
             "type": "shell",
             "command": ".\\gradlew",
             "args": ["clean", "build"],
@@ -62,7 +62,7 @@
             "problemMatcher": []
         },
         {
-            "label": "⏪ Rollback Version",
+            "label": "Rollback Version",
             "type": "shell",
             "command": ".\\build.ps1",
             "args": ["rollback", "-Force"],
